@@ -14,14 +14,22 @@ while True:
 
 	faces_in_1 = getFaces(IMG_1)
 	faces_in_2 = getFaces(IMG_2)
+	face_1 = None
+	face_2 = None
 
-	face_1 = faces_in_1[0]
-	face_2 = faces_in_2[0]
+	if ((len(faces_in_2)*len(faces_in_1)) != 0):
+		face_1 = faces_in_1[0]
+		face_2 = faces_in_2[0]
 
-	toc = time.time()
-	time_elapsed = toc - tic
-
-	if verifyFace(face_1, face_2):
-		print('Face Verified! ', end = '')
-	else: print('Face Not verified! ', end = '')
-	print('Time Required - ', time_elapsed)
+	if ((face_1 != None) & (face_2 != None)):
+		if verifyFace(face_1, face_2, print_score = True): 
+			toc = time.time()
+			time_elapsed = toc - tic
+			print('Face Verified! ', end = '')
+		else: 
+			toc = time.time()
+			time_elapsed = toc - tic
+			print('Face Not Verified! ', end = '')
+		print('Time Required - ' + str(time_elapsed) + '\n')
+	
+	else: print('No Face Detected.\n')
