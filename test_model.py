@@ -12,8 +12,8 @@ from keras.models import model_from_json
 from PIL import Image
 import numpy as np
 import cv2
-import math
-import time
+
+model_name = 'faceNet'
 
 def vgg_face(weights_path='vgg_face_weights.h5'):
     
@@ -70,26 +70,33 @@ def vgg_face(weights_path='vgg_face_weights.h5'):
 def vgg_16():
     model = keras.applications.vgg16.VGG16()
     return model
+
 def faceNet():
     model = load_model('facenet_keras.h5')
     return model
 
-def get_model(name = vgg_face):
+def get_model(name = 'faceNet'):
     if name == 'vgg_16': return vgg_16()
     elif name == 'vgg_face': return vgg_face()
     elif name == 'faceNet': return faceNet()
     else: return None
 
-model = get_model('vgg_face')
-vgg_face_descriptor = Model(inputs=model.layers[0].input, outputs=model.layers[-2].output)
+model = get_model(model_name)
+face_descriptor = Model(inputs=model.layers[0].input, outputs=model.layers[-2].output)
 layer_dict = dict([(layer.name, layer) for layer in model.layers])
 layer_names = [layer.name for layer in model.layers]
 epsilon_cos = 0.60 #cosine similarity
 epsilon_dist = 120 #euclidean distance
 
-def preprocess_image(img):
-    img = img.resize((224, 224))
-    img = img_to_array(img)
+def preprocess_image(img, model_name = 'faceNet'):
+    if model_name == 'faceNet': 
+        img = img.resize((160, 160))
+        img = img_to_array(img)
+        mean, std = img.mean(), img.std()
+        img = (img - mean) / std
+    else: 
+        img = img.resize((224, 224))
+        img = img_to_array(img)
     img = np.expand_dims(img, axis=0)
     img = preprocess_input(img)
     return img
@@ -124,10 +131,10 @@ def verifyScore(euclidean_distance, cosine_similarity):
 
 def getFeatureVector(img, matrix = False, preprocess = True):
     if matrix: 
-        img_representation = vgg_face_descriptor.predict(img)  
+        img_representation = face_descriptor.predict(img)  
     else:
-        if preprocess: img_representation = vgg_face_descriptor.predict(preprocess_image(img))[0,:]
-        else: img_representation = vgg_face_descriptor.predict(img)[0,:]   
+        if preprocess: img_representation = face_descriptor.predict(preprocess_image(img))[0,:]
+        else: img_representation = face_descriptor.predict(img)[0,:]   
     return img_representation
 
 def verifyFace(img1, img2, print_score = False):
@@ -136,8 +143,12 @@ def verifyFace(img1, img2, print_score = False):
     
     cosine_similarity = findCosineSimilarity(img1_representation, img2_representation)
     euclidean_distance = findEuclideanDistance(img1_representation, img2_representation)
+    l1_distance = findL1Norm(img1_representation, img2_representation)
 
-    if print_score: print('Cos: ' + str(cosine_similarity) + ' Dist: ' + str(euclidean_distance))
+    if print_score: print('Cos: ' + str(cosine_similarity) + ' Dist: ' + str(euclidean_distance) + ' L1 Dist: ' + str(l1_distance))
+    cumulative_diff = cosineDifference*(euclidean_distance)*(l1_distance)
+
+    print('cumulative_diff: ', cumulative_diff)
 
     return verifyScore(euclidean_distance, cosine_similarity)
 
@@ -146,8 +157,9 @@ def verifyFaceVector(img1, img2_representation, print_score = False):
     
     cosine_similarity = findCosineSimilarity(img1_representation, img2_representation)
     euclidean_distance = findEuclideanDistance(img1_representation, img2_representation)
+    l1_distance = findL1Norm(img1_representation, img2_representation)
 
-    if print_score: print('Cos: ' + str(cosine_similarity) + ' Dist: ' + str(euclidean_distance))
+    if print_score: print('Cos: ' + str(cosine_similarity) + ' Dist: ' + str(euclidean_distance) + ' L1 Dist: ' + str(l1_distance))
 
     return verifyScore(euclidean_distance, cosine_similarity)
 
@@ -155,13 +167,14 @@ def verifyVecs(img1_representation, img2_representation, print_score = False):
     
     cosine_similarity = findCosineSimilarity(img1_representation, img2_representation)
     euclidean_distance = findEuclideanDistance(img1_representation, img2_representation)
+    l1_distance = findL1Norm(img1_representation, img2_representation)
 
-    if print_score: print('Cos: ' + str(cosine_similarity) + ' Dist: ' + str(euclidean_distance))
+    if print_score: print('Cos: ' + str(cosine_similarity) + ' Dist: ' + str(euclidean_distance) + ' L1 Dist: ' + str(l1_distance))
 
     return verifyScore(euclidean_distance, cosine_similarity)
 
 def verifyVecMat(vector, matrix, print_score = False, first_match = False, best_match = True):
-
+    
     a = np.matmul(matrix, np.transpose(vector))
     b = np.sum(vector*vector)
     c = np.sum(matrix*matrix, axis = -1)
@@ -184,51 +197,7 @@ def verifyVecMat(vector, matrix, print_score = False, first_match = False, best_
         try: return match_vec.index(True)
         except ValueError: return None
     return match_vec
-
-def verifyVecMatBeta(vector, matrix, print_score = False, first_match = False, best_match = True):
-    t0 = time.time()
-    vec = vector.reshape((vector.shape[0], 1, vector.shape[1]))
-    t1 = time.time()
-    for df in matrix:
-        print(df.shape)
-    print('Vec Reshape: ', t1 - t0)
-    a = np.sum(matrix*vec, axis = -1)
-    b = np.sum(vector*vector, axis = -1)
-    b = np.expand_dims(b, axis = -1)
-    c = np.sum(matrix*matrix, axis = -1)
-    c = c.reshape(matrix.shape[0], matrix.shape[1])
-    cosine_similarity =  a / (np.sqrt(b) * np.sqrt(c))
-    t2 = time.time()
-    print('Calc Cos: ', t2 - t1)
-
-    euclidean_distance = np.asarray(matrix) - np.asarray(vec)
-    euclidean_distance = np.sum(euclidean_distance*euclidean_distance, axis = -1)
-    euclidean_distance = np.sqrt(euclidean_distance)
-    t3 = time.time()
-    print('Calc Dist: ', t3 - t2)
-    
-    if print_score: print('Cos: '+str(cosine_similarity)+' Dist: '+str(euclidean_distance))
-
-    if best_match: 
-        e_by_c = cosine_similarity/(euclidean_distance*euclidean_distance)
-        max_ids = np.argmax(e_by_c, axis = -1)
-        for i,max_id in enumerate(max_ids):
-            if((euclidean_distance[i][max_id]<epsilon_dist)&(cosine_similarity[i][max_id]>epsilon_cos)): pass
-            else: max_ids[i] = None
-        t4 = time.time()
-        print('Best match: ', t4 - t3)
-        return max_ids
-
-    euclidean_distance =  [eu_dist < epsilon_dist for eu_dist in euclidean_distance] 
-    cosine_similarity =  [cos_sim > epsilon_cos for cos_sim in cosine_similarity]
-    match_vec = [euclidean_distance[i] & cosine_similarity[i] for i in range(len(cosine_similarity))]
-
-    if first_match: 
-        try: return match_vec.index(True)
-        except ValueError: return None
-        
-    return match_vec
-
+'''
 def getConvList(img, layer = 2):
     layer_output = Model(inputs=model.layers[0].input, outputs=model.layers[layer].output)
     img_representation = layer_output.predict(preprocess_image(img))[0,:]
@@ -280,3 +249,5 @@ def visualizeFilter(layer_name, filter_index, input_img = model.input, alpha = 1
     img = deprocess_image(img)
     img = Image.fromarray(img)
     return img
+
+'''

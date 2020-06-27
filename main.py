@@ -1,5 +1,5 @@
-from model import verifyFace
-from faces import getFaces
+from test_model import verifyFace, getFeatureVector
+from model_images import getFaces
 import numpy as np
 import cv2
 from PIL import Image
